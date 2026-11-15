@@ -82,3 +82,8 @@ def predict(request: PredictRequest, x_api_key: str | None = Header(default=None
     except Exception:
         logger.exception('Prediction failed')
         raise HTTPException(status_code=500, detail='Prediction failed; check server logs')
+
+# Customer uploads use verified Supabase accounts and isolated storage. They are
+# intentionally not connected to the shared demo prediction endpoint.
+from api.imports import router as imports_router
+app.include_router(imports_router)

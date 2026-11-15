@@ -53,3 +53,11 @@ The bundled demonstration model was trained on 120 synthetic daily records per d
 pip install pytest httpx
 python -m pytest -q
 ```
+
+## Customer account imports (early access)
+
+The landing page supports Supabase Auth signup/sign-in and reviewed CSV/XLSX imports. Run `supabase/client_imports.sql` as a migration before enabling it. Authentication requires Supabase email/password sign-in to be enabled; account confirmation follows the project's Auth settings. The API validates bearer tokens with Supabase and always derives ownership from the verified user, never the upload. Client imports live in a separate RLS-enabled table without direct client policies. The service role bypasses RLS, so every server-side query must remain owner-scoped.
+
+Imports accept up to 500 rows and 2 MB of UTF-8 CSV or `.xlsx`, with `sku`, `sale_date`, `quantity_sold`, `unit_price`, and optional `store_location` mapped from file headers. Dates are ISO dates or Excel dates, quantities non-negative integers, prices non-negative with at most two decimals. Preview reports errors; confirmation revalidates and atomically inserts the whole file. Identical file/mapping imports by the same user are rejected. The file is not persisted; only normalized rows are stored. The interface keeps an access token in tab-scoped session storage and does not refresh expired sessions; sign in again if necessary.
+
+**Important:** Imports are not yet connected to model training or forecasting. The existing shared-key prediction endpoint is demo-only and must not be used for customer data. No PDF/OCR, self-service retraining, account deletion UI, gateway rate limits, upload malware scanning, comprehensive audit logging, or production tenant isolation review exists yet. Set up abuse protection, security testing, and operational monitoring before exposing account endpoints publicly. Do not upload sensitive data until those controls are in place.
