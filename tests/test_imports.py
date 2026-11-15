@@ -82,3 +82,14 @@ def test_database_uses_request_token(monkeypatch):
     monkeypatch.setattr(imports, 'fresh_client', lambda: client)
     assert imports.user_database('Bearer user-token') is client
     assert seen == ['user-token']
+
+
+def test_auth_config_only_exposes_publishable_key(monkeypatch):
+    client = TestClient(index.app)
+    monkeypatch.setenv('SUPABASE_URL', 'https://example.supabase.co')
+    monkeypatch.setenv('SUPABASE_ANON_KEY', 'sb_secret_dont-expose')
+    response = client.get('/api/auth/config')
+    assert response.status_code == 503
+    assert 'sb_secret' not in response.text
+    monkeypatch.setenv('SUPABASE_ANON_KEY', 'sb_publishable_public')
+    assert client.get('/api/auth/config').json() == {'url':'https://example.supabase.co', 'publishable_key':'sb_publishable_public'}

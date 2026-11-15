@@ -62,3 +62,14 @@ The landing page supports Supabase Auth signup/sign-in and reviewed CSV/XLSX imp
 Imports accept up to 500 rows and 2 MB of UTF-8 CSV or `.xlsx`, with `sku`, `sale_date`, `quantity_sold`, `unit_price`, and optional `store_location` mapped from file headers. Dates are ISO dates or Excel dates, quantities non-negative integers, prices non-negative with at most two decimals. Preview reports errors; confirmation revalidates and atomically inserts the whole file. Identical file/mapping imports by the same user are rejected. The file is not persisted; only normalized rows are stored. The interface keeps an access token in tab-scoped session storage and does not refresh expired sessions; sign in again if necessary.
 
 **Important:** Imports are not yet connected to model training or forecasting. The existing shared-key prediction endpoint is demo-only and must not be used for customer data. No PDF/OCR, self-service retraining, account deletion UI, gateway rate limits, upload malware scanning, comprehensive audit logging, or production tenant isolation review exists yet. Set up abuse protection, security testing, and operational monitoring before exposing account endpoints publicly. Do not upload sensitive data until those controls are in place.
+
+### GitHub sign-in
+
+Enable the GitHub provider in Supabase Auth with a GitHub OAuth App whose callback is `https://<project-ref>.supabase.co/auth/v1/callback`. Set `SUPABASE_ANON_KEY` to a **publishable** (`sb_publishable_...`) key; the public config endpoint rejects secret keys. Add the app's exact origin and `/` to Supabase Auth's redirect allow list (and the stable branch-preview origin if preview sign-in is needed). The app uses Supabase JS's PKCE flow and keeps its session in tab-scoped session storage. Do not expose provider secrets. GitHub sign-in is independent of SMTP, though email/password signup still needs email delivery.
+
+The checked-in browser bundle is built from `web/auth-client.js`. To rebuild it after dependency changes:
+
+```sh
+npm install --prefix .cache/oauth --no-save @supabase/supabase-js@2.99.2 esbuild@0.25.12
+NODE_PATH=.cache/oauth/node_modules .cache/oauth/node_modules/.bin/esbuild web/auth-client.js --bundle --format=esm --platform=browser --minify --outfile=auth-client.bundle.js
+```

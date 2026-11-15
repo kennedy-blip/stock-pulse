@@ -2,7 +2,7 @@
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>StockPulse | Import sales</title>
 <style>body{font:16px/1.5 system-ui,sans-serif;background:#101923;color:#e7eff7;margin:0}main{max-width:800px;margin:3rem auto;padding:0 1.3rem}h1{font-size:2.6rem;letter-spacing:-.04em;margin:.2rem 0}section{background:#1a2937;border:1px solid #324657;border-radius:12px;padding:1.3rem;margin:1rem 0}label{display:block;margin:.6rem 0}input,select,button{font:inherit;border-radius:6px;border:1px solid #63798a;padding:.55rem;background:#101923;color:#fff}button{background:#77e5be;color:#10231d;border:0;cursor:pointer;margin:.5rem .5rem .5rem 0;font-weight:600}button:disabled{opacity:.45;cursor:not-allowed}a{color:#77e5be}small,.note{color:#b6c9d5}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#101923;border-radius:6px;padding:1rem} .mapping{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:.5rem}</style></head>
 <body><main><p>STOCKPULSE / EARLY ACCESS</p><h1>Bring your sales data.</h1><p>Import sales securely, one account at a time. Client-specific forecasting is not available yet.</p>
-<section id="account"><h2>Account</h2><p class="note">Create an account or sign in. Email verification may be required.</p><label>Email <input id="email" type="email" autocomplete="email"></label><label>Password <input id="password" type="password" autocomplete="current-password" minlength="8"></label><button id="signup">Create account</button><button id="login">Sign in</button><button id="logout" hidden>Sign out</button><p id="account-status" role="status"></p></section>
+<section id="account"><h2>Account</h2><p class="note">Create an account or sign in. Email verification may be required.</p><label>Email <input id="email" type="email" autocomplete="email"></label><label>Password <input id="password" type="password" autocomplete="current-password" minlength="8"></label><button id="github-login">Continue with GitHub</button><br><button id="signup">Create account</button><button id="login">Sign in</button><button id="logout" hidden>Sign out</button><p id="account-status" role="status"></p></section>
 <section><h2>1. Select your file</h2><p class="note">UTF-8 CSV or .xlsx, maximum 2 MB and 500 rows. PDF support is planned. Files are processed in memory and not stored.</p><input type="file" id="file" accept=".csv,.xlsx"><button id="inspect">Read columns</button></section>
 <section><h2>2. Map columns</h2><p class="note">Dates must be YYYY-MM-DD or Excel dates. Quantities are whole numbers; prices have at most two decimal places.</p><div id="mapping" class="mapping"></div><button id="preview" disabled>Review import</button></section>
 <section><h2>3. Review &amp; save</h2><p class="note">All rows must be valid before saving. Re-uploading the same file with the same mapping is blocked.</p><pre id="result" role="status">No preview yet.</pre><button id="save" disabled>Confirm import</button><button id="show-sales">Show my recent sales</button><pre id="sales" hidden></pre></section>
@@ -14,7 +14,7 @@ function status(t){$('account-status').textContent=t; $('logout').hidden=!token}
 function invalidate(){reviewed=false;$('save').disabled=true}
 async function request(url,opts={}){opts.headers={...(opts.headers||{}),...(token?{Authorization:'Bearer '+token}:{})}; const r=await fetch(url,opts); let j=await r.json().catch(()=>({detail:'Unexpected server response'})); if(!r.ok)throw new Error(typeof j.detail==='string'?j.detail:JSON.stringify(j.detail));return j}
 async function auth(action){try{const result=await request('/api/auth/'+action,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:$('email').value,password:$('password').value})});token=result.access_token||result.session?.access_token||'';if(token)sessionStorage.setItem('stockpulse_token',token);$('password').value='';invalidate();$('sales').hidden=true;$('sales').textContent='';status(token?'Signed in.':result.message)}catch(e){status(e.message)}}
-$('signup').onclick=()=>auth('signup');$('login').onclick=()=>auth('login');$('logout').onclick=()=>{token='';sessionStorage.removeItem('stockpulse_token');status('Signed out.');invalidate();$('sales').hidden=true;$('sales').textContent=''};
+$('signup').onclick=()=>auth('signup');$('login').onclick=()=>auth('login');$('logout').onclick=async()=>{if(window.stockpulseAuthClient){await window.stockpulseAuthClient.auth.signOut().catch(()=>{});}token='';sessionStorage.removeItem('stockpulse_token');status('Signed out.');invalidate();$('sales').hidden=true;$('sales').textContent=''};
 $('file').onchange=()=>{invalidate();$('mapping').replaceChildren();$('preview').disabled=true;$('result').textContent='No preview yet.'};
 function form(){if(!$('file').files[0])throw new Error('Choose a file first');let f=new FormData();f.append('file',$('file').files[0]);return f}
 $('inspect').onclick=async()=>{try{invalidate();let j=await request('/api/imports/columns',{method:'POST',body:form()});$('mapping').replaceChildren();for(const [key,label,required] of fields){let l=document.createElement('label');l.textContent=label+(required?' *':' (optional)');let s=document.createElement('select');s.id='map-'+key;let blank=new Option('Choose column','');s.add(blank);j.headers.forEach(h=>s.add(new Option(h,h)));if(j.headers.includes(key))s.value=key;s.onchange=invalidate;l.appendChild(s);$('mapping').appendChild(l)}$('preview').disabled=false;$('result').textContent=j.row_count+' rows detected. Map the columns to continue.'}catch(e){$('result').textContent=e.message}};
@@ -22,4 +22,43 @@ function mappedForm(confirm){let f=form(),m={};for(const [key] of fields){let s=
 $('preview').onclick=async()=>{try{invalidate();let j=await request('/api/imports/sales',{method:'POST',body:mappedForm(false)});$('result').textContent=JSON.stringify(j,null,2);reviewed=j.error_count===0;$('save').disabled=!reviewed}catch(e){$('result').textContent=e.message}};
 $('save').onclick=async()=>{if(!reviewed)return;try{let j=await request('/api/imports/sales',{method:'POST',body:mappedForm(true)});$('result').textContent=JSON.stringify(j,null,2);invalidate()}catch(e){$('result').textContent=e.message}};
 $('show-sales').onclick=async()=>{try{let j=await request('/api/imports/sales');$('sales').hidden=false;$('sales').textContent=JSON.stringify(j,null,2)}catch(e){$('sales').hidden=false;$('sales').textContent=e.message}};
+</script>
+<script type="module">
+import { authClient } from '/auth-client.bundle.js';
+const button = document.getElementById('github-login');
+const accountStatus = document.getElementById('account-status');
+button.onclick = async () => {
+  button.disabled = true;
+  try {
+    const client = await authClient();
+    const {error} = await client.auth.signInWithOAuth({provider:'github', options:{redirectTo:location.origin + '/'}});
+    if (error) throw error;
+  } catch (error) { accountStatus.textContent = 'GitHub sign-in could not start. Please try again.'; button.disabled = false; }
+};
+(async () => {
+  const isCallback = new URL(location.href).searchParams.has('code');
+  try {
+    const client = await authClient();
+    window.stockpulseAuthClient = client;
+    client.auth.onAuthStateChange((event, session) => {
+      // An email/password session is managed separately; do not clear it on the
+      // SDK's initial empty session event.
+      if (session && ['INITIAL_SESSION','SIGNED_IN','TOKEN_REFRESHED'].includes(event)) {
+        token = session.access_token;
+        sessionStorage.setItem('stockpulse_token', token);
+        invalidate(); $('sales').hidden=true; $('sales').textContent='';
+        status('Signed in with GitHub.');
+      } else if (event === 'SIGNED_OUT') {
+        token=''; sessionStorage.removeItem('stockpulse_token'); invalidate(); status('Signed out.');
+      }
+    });
+    const {data, error} = await client.auth.getSession();
+    if (error || (isCallback && !data.session)) throw error || new Error('No session');
+  } catch (error) {
+    if (isCallback) {
+      history.replaceState(null, '', location.pathname);
+      accountStatus.textContent = 'GitHub sign-in could not be completed. Please try again.';
+    }
+  }
+})();
 </script></body></html>

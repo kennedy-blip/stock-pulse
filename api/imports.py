@@ -44,6 +44,15 @@ def user_database(authorization: str):
     return client
 
 
+@router.get('/auth/config')
+def public_auth_config():
+    url, key = os.getenv('SUPABASE_URL'), os.getenv('SUPABASE_ANON_KEY')
+    # Never return a service role key, even if the environment is misconfigured.
+    if not url or not key or not key.startswith('sb_publishable_'):
+        raise HTTPException(503, 'Public authentication is not configured')
+    return {'url': url, 'publishable_key': key}
+
+
 class Credentials(BaseModel):
     email: str = Field(min_length=3, max_length=254)
     password: str = Field(min_length=8, max_length=128)
