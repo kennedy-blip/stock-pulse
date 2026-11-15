@@ -2,10 +2,11 @@
 import hmac
 import logging
 import os
-import pickle
+import base64
+import json
+import zlib
 from datetime import date, timedelta
 from functools import lru_cache
-from pathlib import Path
 
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
@@ -14,17 +15,19 @@ from src.pipeline import FEATURES, make_features
 
 logger = logging.getLogger(__name__)
 app = FastAPI(title='StockPulse', version='1.0.0')
-ROOT = Path(__file__).resolve().parent.parent
 
 
 @lru_cache(maxsize=1)
 def load_artifact():
-    path = Path(os.getenv('MODEL_PATH', str(ROOT / 'ml/model.pkl')))
-    # Pickle is executable: only load artifacts built by a trusted operator.
-    with path.open('rb') as f:
-        artifact = pickle.load(f)
+    # This Python module is tracked by Vercel's import tracer; no pickle or
+    # runtime-dependent filesystem path is needed to load the model.
+    from lightgbm import Booster
+    from ml.deployed_model import MODEL_B85, METADATA_JSON
+    artifact = json.loads(METADATA_JSON)
     if artifact['features'] != FEATURES:
         raise ValueError('Model feature schema does not match the pipeline')
+    model_text = zlib.decompress(base64.b85decode(MODEL_B85)).decode('utf-8')
+    artifact['model'] = Booster(model_str=model_text)
     return artifact
 
 

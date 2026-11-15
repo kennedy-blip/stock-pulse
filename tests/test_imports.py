@@ -47,7 +47,7 @@ def test_auth_preview_confirm_and_owner_isolation(monkeypatch):
         def execute(self): return type('R', (), {'data': [row for row in stored if row['owner_id']==self.owner]})()
     class DB:
         def table(self, name): assert name=='client_sales_imports'; return Query()
-    monkeypatch.setattr(imports, 'get_client', lambda: DB())
+    monkeypatch.setattr(imports, 'user_database', lambda authorization: DB())
     client = TestClient(index.app)
     def upload(token, confirm):
         return client.post('/api/imports/sales', headers={'Authorization': token}, files={'file': ('sales.csv', CSV, 'text/csv')}, data={'mapping':json.dumps(MAPPING), 'confirm':str(confirm).lower()})
@@ -72,3 +72,13 @@ def test_verified_user_is_used_and_invalid_token_fails(monkeypatch):
     with pytest.raises(__import__('fastapi').HTTPException) as e:
         imports.authenticated_user('Bearer invalid')
     assert e.value.status_code == 401
+
+
+def test_database_uses_request_token(monkeypatch):
+    seen = []
+    class Postgrest:
+        def auth(self, token): seen.append(token)
+    client = type('Client', (), {'postgrest': Postgrest()})()
+    monkeypatch.setattr(imports, 'fresh_client', lambda: client)
+    assert imports.user_database('Bearer user-token') is client
+    assert seen == ['user-token']

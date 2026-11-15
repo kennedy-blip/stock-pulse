@@ -1,6 +1,6 @@
 # StockPulse
 
-A FastAPI demand-forecasting service using Supabase, Polars and a global LightGBM model. The included `ml/model.pkl` is a **demo model trained on synthetic data**, not a production forecast model. Replace it with a model trained on your own historical sales before operational use. Health and prediction return 503 if the artifact is missing.
+A FastAPI demand-forecasting service using Supabase, Polars and a global LightGBM model. The included `ml/deployed_model.py` and `ml/model.pkl` contain a **demo model trained on synthetic data**, not a production forecast model. Replace it with a model trained on your own historical sales before operational use. Health and prediction return 503 if the artifact is missing.
 
 ## Setup
 
@@ -16,13 +16,14 @@ A FastAPI demand-forecasting service using Supabase, Polars and a global LightGB
    export SUPABASE_URL='https://YOUR-PROJECT.supabase.co'
    export SUPABASE_SERVICE_ROLE_KEY='your-service-role-key'
    export STOCKPULSE_API_KEY='a-long-random-secret'
+   export SUPABASE_ANON_KEY='your-publishable-or-anon-key'
    ```
    Find the project URL and service-role key in the Supabase dashboard. The API key is your own secret, not a Supabase key. Use a secret manager for production. See `.env.example` for the names.
 4. Train on the populated database:
    ```sh
    python -m ml.train
    ```
-   This writes `ml/model.pkl` and reports time-split validation RMSE. Training needs at least 50 complete feature rows over 10 distinct dates after the initial 30-day warm-up. Only load trusted pickle artifacts. Retrain and redeploy when data changes; the model is cached per serverless instance.
+   This writes `ml/model.pkl` for offline use and `ml/deployed_model.py` for inference, and reports time-split validation RMSE. **Do not publish or commit models trained on private client data**: model parameters can reveal information about the training data. Training needs at least 50 complete feature rows over 10 distinct dates after the initial 30-day warm-up. Only load trusted pickle artifacts. Retrain and redeploy when data changes; the model is cached per serverless instance.
 5. Run locally: `uvicorn api.index:app --host 0.0.0.0 --port 8000`. Check `GET /api/health`. Request a forecast:
    ```sh
    curl -X POST http://localhost:8000/api/predict \
@@ -33,7 +34,7 @@ A FastAPI demand-forecasting service using Supabase, Polars and a global LightGB
 
 ## Vercel
 
-Train the model first, include the trusted `ml/model.pkl` in the Git deployment (ensure it contains no sensitive data), and import this GitHub repository in Vercel. Set the three environment variables above as server-side variables for the desired environments, then deploy. `api/index.py` exposes an ASGI `app`; Vercel's Python runtime handles it directly. `vercel.json` routes `/api/*` and includes the artifact in the function bundle. Check build logs for runtime/native dependency compatibility and function size limits, and verify `/api/health` and a prediction after deployment. Python dependencies are version-ranged; lock them in your deployment process for reproducible model/runtime versions. Model files generated with incompatible library versions may not load.
+Train a model first and include `ml/deployed_model.py` in the deployment only if its training data is safe to publish. Import this GitHub repository in Vercel. Set the four environment variables above for the desired environments, then deploy. `api/index.py` exposes an ASGI `app`; Vercel's Python runtime handles it directly. `vercel.json` routes `/api/*`; the inference artifact is a Python module explicitly imported by the serverless function, avoiding pickle compatibility and asset tracing issues. Check build logs for runtime/native dependency compatibility and function size limits, and verify `/api/health` and a prediction after deployment. Python dependencies are version-ranged; lock them in your deployment process for reproducible model/runtime versions. Model files generated with incompatible library versions may not load.
 
 ## Demo model provenance
 
@@ -56,7 +57,7 @@ python -m pytest -q
 
 ## Customer account imports (early access)
 
-The landing page supports Supabase Auth signup/sign-in and reviewed CSV/XLSX imports. Run `supabase/client_imports.sql` as a migration before enabling it. Authentication requires Supabase email/password sign-in to be enabled; account confirmation follows the project's Auth settings. The API validates bearer tokens with Supabase and always derives ownership from the verified user, never the upload. Client imports live in a separate RLS-enabled table without direct client policies. The service role bypasses RLS, so every server-side query must remain owner-scoped.
+The landing page supports Supabase Auth signup/sign-in and reviewed CSV/XLSX imports. Apply `supabase/client_imports.sql` and then `supabase/client_imports_rls.sql` as migrations before enabling it. Configure `SUPABASE_ANON_KEY` to the project’s public anon or publishable key. Authentication requires Supabase email/password sign-in to be enabled; account confirmation follows the project's Auth settings. The API validates bearer tokens with Supabase and always derives ownership from the verified user, never the upload. Client imports live in a separate RLS-enabled table. Import queries use the verified user’s token with the public key, and RLS enforces owner-scoped access in addition to explicit owner filters. The separate shared demo prediction endpoint still uses the service role and is not suitable for client data.
 
 Imports accept up to 500 rows and 2 MB of UTF-8 CSV or `.xlsx`, with `sku`, `sale_date`, `quantity_sold`, `unit_price`, and optional `store_location` mapped from file headers. Dates are ISO dates or Excel dates, quantities non-negative integers, prices non-negative with at most two decimals. Preview reports errors; confirmation revalidates and atomically inserts the whole file. Identical file/mapping imports by the same user are rejected. The file is not persisted; only normalized rows are stored. The interface keeps an access token in tab-scoped session storage and does not refresh expired sessions; sign in again if necessary.
 

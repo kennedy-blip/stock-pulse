@@ -6,6 +6,7 @@ from pathlib import Path
 import numpy as np
 from lightgbm import LGBMRegressor
 from sklearn.metrics import mean_squared_error
+from ml.artifact import export_module
 from src.database import fetch_all
 from src.pipeline import FEATURES, make_features
 
@@ -34,7 +35,8 @@ def main():
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open('wb') as f:
         pickle.dump(artifact, f)
-    print(f'Saved {path}; version={version}, validation RMSE={rmse:.3f}, residual p90={error:.3f}')
+    export_module(model, FEATURES, version, error, rmse)
+    print(f'Saved {path} and ml/deployed_model.py; version={version}, validation RMSE={rmse:.3f}, residual p90={error:.3f}')
 
 if __name__ == '__main__':
     main()

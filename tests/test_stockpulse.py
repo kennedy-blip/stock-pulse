@@ -52,3 +52,14 @@ def test_predict_recursive_and_logs(monkeypatch):
     assert response.status_code == 200, response.text
     assert [r['predicted_demand'] for r in response.json()['forecasts']] == [41, 42]
     assert len(logged) == 2
+
+
+def test_bundled_native_model_matches_trained_demo():
+    import pickle
+    from pathlib import Path
+    artifact = index.load_artifact()
+    with (Path(__file__).resolve().parent.parent / 'ml/model.pkl').open('rb') as f:
+        original = pickle.load(f)
+    features = np.array([[1, 12.5, 15, 17, 18, 18, 19, 2, 8, 0, 1]], dtype=float)
+    np.testing.assert_allclose(artifact['model'].predict(features), original['model'].predict(features), rtol=1e-10, atol=1e-10)
+    assert artifact['features'] == FEATURES

@@ -7,7 +7,6 @@ from uuid import UUID
 from fastapi import APIRouter, File, Form, Header, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from supabase import create_client
-from src.database import get_client
 from src.imports import MAX_BYTES, read_rows, validate
 
 router = APIRouter(prefix='/api')
@@ -15,10 +14,10 @@ logger = logging.getLogger(__name__)
 
 
 def fresh_client():
-    url, key = os.getenv('SUPABASE_URL'), os.getenv('SUPABASE_SERVICE_ROLE_KEY')
+    url, key = os.getenv('SUPABASE_URL'), os.getenv('SUPABASE_ANON_KEY')
     if not url or not key:
         raise HTTPException(503, 'Authentication service is not configured')
-    # Never sign in on the cached service-role client: auth mutates its session.
+    # Use a fresh public-key client for each request; authentication mutates session state.
     return create_client(url, key)
 
 
@@ -36,6 +35,13 @@ def authenticated_user(authorization: str | None):
         raise
     except Exception:
         raise HTTPException(401, 'Invalid or expired session')
+
+
+def user_database(authorization: str):
+    # RLS evaluates the verified user's JWT, never a service-role credential.
+    client = fresh_client()
+    client.postgrest.auth(authorization[7:].strip())
+    return client
 
 
 class Credentials(BaseModel):
@@ -107,7 +113,7 @@ async def import_sales(file: UploadFile = File(...), mapping: str = Form(...), c
     records = [{**row, 'owner_id': owner_id, 'import_hash': result['import_hash']} for row in result['valid_rows']]
     try:
         # A single insert is atomic; the unique constraint prevents exact re-imports.
-        get_client().table('client_sales_imports').insert(records).execute()
+        user_database(authorization).table('client_sales_imports').insert(records).execute()
     except Exception as exc:
         if getattr(exc, 'code', None) == '23505':
             raise HTTPException(409, 'This file and mapping have already been imported')
@@ -120,7 +126,7 @@ async def import_sales(file: UploadFile = File(...), mapping: str = Form(...), c
 def list_sales(authorization: str | None = Header(default=None)):
     owner_id = authenticated_user(authorization)
     try:
-        result = get_client().table('client_sales_imports').select('sku,sale_date,quantity_sold,unit_price,store_location').eq('owner_id', owner_id).order('sale_date', desc=True).limit(100).execute()
+        result = user_database(authorization).table('client_sales_imports').select('sku,sale_date,quantity_sold,unit_price,store_location').eq('owner_id', owner_id).order('sale_date', desc=True).limit(100).execute()
         return {'sales': result.data or [], 'limit': 100}
     except Exception:
         logger.exception('Sales listing failed')
