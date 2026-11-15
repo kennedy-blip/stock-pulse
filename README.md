@@ -1,6 +1,6 @@
 # StockPulse
 
-A FastAPI demand-forecasting service using Supabase, Polars and a global LightGBM model. The repository contains the application and training code, **not a pre-trained model**. A useful model requires your historical sales data; health and prediction will return 503 until an artifact is trained and deployed.
+A FastAPI demand-forecasting service using Supabase, Polars and a global LightGBM model. The included `ml/model.pkl` is a **demo model trained on synthetic data**, not a production forecast model. Replace it with a model trained on your own historical sales before operational use. Health and prediction return 503 if the artifact is missing.
 
 ## Setup
 
@@ -34,6 +34,10 @@ A FastAPI demand-forecasting service using Supabase, Polars and a global LightGB
 ## Vercel
 
 Train the model first, include the trusted `ml/model.pkl` in the Git deployment (ensure it contains no sensitive data), and import this GitHub repository in Vercel. Set the three environment variables above as server-side variables for the desired environments, then deploy. `api/index.py` exposes an ASGI `app`; Vercel's Python runtime handles it directly. `vercel.json` routes `/api/*` and includes the artifact in the function bundle. Check build logs for runtime/native dependency compatibility and function size limits, and verify `/api/health` and a prediction after deployment. Python dependencies are version-ranged; lock them in your deployment process for reproducible model/runtime versions. Model files generated with incompatible library versions may not load.
+
+## Demo model provenance
+
+The bundled demonstration model was trained on 120 synthetic daily records per demo SKU, reconstructed locally from the seeded `stocks` Supabase data after checking counts, dates, and values through the Supabase connector. The local training run did not connect to Supabase directly. Its validation RMSE is approximately 0.029 on synthetic data, which does not indicate real-world accuracy. The demo rows are labeled `DEMO-*`; do not mix them with real sales for production training.
 
 ## Modeling assumptions and limitations
 
